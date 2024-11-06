@@ -8,6 +8,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
 using Azure.AI.OpenAI;
+using Microsoft.CognitiveServices.Speech;
 using OpenAI;
 using System.Collections.Generic;
 using Azure;
@@ -17,7 +18,7 @@ namespace Contoso.GenAISearch
 {
     public static class QueryExpander
     {
-        
+
         private static readonly string OpenAi4oMiniKey = Environment.GetEnvironmentVariable("OpenAi4oMiniKey");
         private static readonly string OpenAi4oMiniEndpoint = Environment.GetEnvironmentVariable("OpenAi4oMiniEndpoint");
         private static readonly string OpenAi4oEndpoint = Environment.GetEnvironmentVariable("OpenAi4oEndpoint");
@@ -31,6 +32,23 @@ namespace Contoso.GenAISearch
             log.LogInformation("C# HTTP trigger function processed a request.");
 
             string query = req.Query["query"];
+            string audioFilePath = req.Query["audioFilePath"];
+            if (!string.IsNullOrEmpty(audioFilePath))
+            {
+                var speechConfig = SpeechConfig.FromSubscription(Environment.GetEnvironmentVariable("AzureSpeechKey"), Environment.GetEnvironmentVariable("AzureSpeechRegion"));
+                var audioConfig = AudioConfig.FromWavFileInput(audioFilePath);
+                var recognizer = new SpeechRecognizer(speechConfig, audioConfig);
+
+                var result = await recognizer.RecognizeOnceAsync();
+                if (result.Reason == ResultReason.RecognizedSpeech)
+                {
+                    query = result.Text;
+                }
+                else
+                {
+                    return new BadRequestObjectResult("Speech could not be recognized.");
+                }
+            }
             string model = req.Query["model"];
 
             if (string.IsNullOrEmpty(query))
@@ -56,7 +74,6 @@ namespace Contoso.GenAISearch
                 return new BadRequestObjectResult("Please pass a valid model in the query string. Valid values are gpt-4o and gpt-4o-mini.");
             }
 
-            
             string promptPath = Path.Combine(context.FunctionAppDirectory, "Prompt.txt");
             string systemMessage = await File.ReadAllTextAsync(promptPath);
 
